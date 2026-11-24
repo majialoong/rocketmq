@@ -18,6 +18,7 @@
 package org.apache.rocketmq.proxy.remoting.activity;
 
 import io.netty.channel.ChannelHandlerContext;
+import java.time.Duration;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.header.EndTransactionRequestHeader;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
@@ -37,11 +38,16 @@ public class TransactionActivity extends AbstractRemotingActivity {
     @Override
     protected RemotingCommand processRequest0(ChannelHandlerContext ctx, RemotingCommand request,
         ProxyContext context) throws Exception {
+        final EndTransactionRequestHeader requestHeader = (EndTransactionRequestHeader) request.decodeCommandCustomHeader(EndTransactionRequestHeader.class);
+        // Remoting producers send messages through the proxy without recording transaction data, so forward their
+        // end transaction requests directly. Responses to transaction checks rely on the data recorded by the proxy relay.
+        if (!requestHeader.getFromTransactionCheck()) {
+            return request(ctx, request, context, Duration.ofSeconds(3).toMillis());
+        }
+
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
-
-        final EndTransactionRequestHeader requestHeader = (EndTransactionRequestHeader) request.decodeCommandCustomHeader(EndTransactionRequestHeader.class);
 
         TransactionStatus transactionStatus = TransactionStatus.UNKNOWN;
         switch (requestHeader.getCommitOrRollback()) {
