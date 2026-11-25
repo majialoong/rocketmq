@@ -22,7 +22,9 @@ import java.time.Duration;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.header.EndTransactionRequestHeader;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.proxy.ProxyMode;
 import org.apache.rocketmq.proxy.common.ProxyContext;
+import org.apache.rocketmq.proxy.config.ConfigurationManager;
 import org.apache.rocketmq.proxy.processor.MessagingProcessor;
 import org.apache.rocketmq.proxy.processor.TransactionStatus;
 import org.apache.rocketmq.proxy.remoting.pipeline.RequestPipeline;
@@ -39,9 +41,10 @@ public class TransactionActivity extends AbstractRemotingActivity {
     protected RemotingCommand processRequest0(ChannelHandlerContext ctx, RemotingCommand request,
         ProxyContext context) throws Exception {
         final EndTransactionRequestHeader requestHeader = (EndTransactionRequestHeader) request.decodeCommandCustomHeader(EndTransactionRequestHeader.class);
-        // Remoting producers send messages through the proxy without recording transaction data, so forward their
-        // end transaction requests directly. Responses to transaction checks rely on the data recorded by the proxy relay.
-        if (!requestHeader.getFromTransactionCheck()) {
+        // In cluster mode, the proxy forwards half messages without recording transaction data.
+        // Replies to transaction checks use the data recorded by the proxy relay.
+        if (!requestHeader.getFromTransactionCheck()
+            && ProxyMode.isClusterMode(ConfigurationManager.getProxyConfig().getProxyMode())) {
             return request(ctx, request, context, Duration.ofSeconds(3).toMillis());
         }
 

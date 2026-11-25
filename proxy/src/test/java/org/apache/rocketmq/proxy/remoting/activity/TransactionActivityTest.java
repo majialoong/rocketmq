@@ -17,9 +17,13 @@
 
 package org.apache.rocketmq.proxy.remoting.activity;
 
+import org.apache.rocketmq.auth.config.AuthConfig;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.proxy.ProxyMode;
 import org.apache.rocketmq.proxy.common.ProxyContext;
+import org.apache.rocketmq.proxy.config.ConfigurationManager;
 import org.apache.rocketmq.proxy.config.InitConfigTest;
+import org.apache.rocketmq.proxy.config.ProxyConfig;
 import org.apache.rocketmq.proxy.processor.MessagingProcessor;
 import org.apache.rocketmq.proxy.processor.TransactionStatus;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -54,7 +58,7 @@ public class TransactionActivityTest extends InitConfigTest {
             MessageSysFlag.TRANSACTION_ROLLBACK_TYPE,
             MessageSysFlag.TRANSACTION_NOT_TYPE
         }) {
-            RemotingCommand request = endTransactionRequest(state, BROKER_NAME, false);
+            RemotingCommand request = endTransactionRequest(state, TOPIC, BROKER_NAME, false);
             activity.processRequest0(null, request, context);
             verify(messagingProcessor).requestOneway(eq(context), eq(BROKER_NAME), same(request), anyLong());
         }
@@ -62,8 +66,36 @@ public class TransactionActivityTest extends InitConfigTest {
     }
 
     @Test
+    public void testProducerCommitUsesStoredTransactionDataInLocalMode() throws Exception {
+        ProxyConfig proxyConfig = ConfigurationManager.getProxyConfig();
+        String previousMode = proxyConfig.getProxyMode();
+        try {
+            proxyConfig.setProxyMode(ProxyMode.LOCAL.name());
+            RemotingCommand request = endTransactionRequest(MessageSysFlag.TRANSACTION_COMMIT_TYPE, TOPIC, BROKER_NAME, false);
+            activity.processRequest0(null, request, context);
+            verify(messagingProcessor).endTransaction(context, TOPIC, "txId", "msgId", "group", TransactionStatus.COMMIT, false);
+        } finally {
+            proxyConfig.setProxyMode(previousMode);
+        }
+    }
+
+    @Test
+    public void testForwardProducerCommitWithoutTopicWhenAuthorizationEnabled() throws Exception {
+        AuthConfig authConfig = ConfigurationManager.getAuthConfig();
+        boolean previousAuthorizationEnabled = authConfig.isAuthorizationEnabled();
+        try {
+            authConfig.setAuthorizationEnabled(true);
+            RemotingCommand request = endTransactionRequest(MessageSysFlag.TRANSACTION_COMMIT_TYPE, null, BROKER_NAME, false);
+            activity.processRequest0(null, request, context);
+            verify(messagingProcessor).requestOneway(eq(context), eq(BROKER_NAME), same(request), anyLong());
+        } finally {
+            authConfig.setAuthorizationEnabled(previousAuthorizationEnabled);
+        }
+    }
+
+    @Test
     public void testProducerEndTransactionWithoutBrokerNameNotSupported() throws Exception {
-        RemotingCommand request = endTransactionRequest(MessageSysFlag.TRANSACTION_COMMIT_TYPE, null, false);
+        RemotingCommand request = endTransactionRequest(MessageSysFlag.TRANSACTION_COMMIT_TYPE, TOPIC, null, false);
         RemotingCommand response = activity.processRequest0(null, request, context);
         assertThat(response.getCode()).isEqualTo(ResponseCode.VERSION_NOT_SUPPORTED);
         verify(messagingProcessor, never()).requestOneway(any(), anyString(), any(), anyLong());
@@ -73,7 +105,7 @@ public class TransactionActivityTest extends InitConfigTest {
     @Test
     public void testTransactionCheckUsesStoredTransactionData() throws Exception {
         for (String brokerName : new String[] {null, BROKER_NAME}) {
-            RemotingCommand request = endTransactionRequest(MessageSysFlag.TRANSACTION_COMMIT_TYPE, brokerName, true);
+            RemotingCommand request = endTransactionRequest(MessageSysFlag.TRANSACTION_COMMIT_TYPE, TOPIC, brokerName, true);
             activity.processRequest0(null, request, context);
         }
         verify(messagingProcessor, times(2)).endTransaction(context, TOPIC, "txId", "msgId", "group",
@@ -81,10 +113,10 @@ public class TransactionActivityTest extends InitConfigTest {
         verify(messagingProcessor, never()).requestOneway(any(), anyString(), any(), anyLong());
     }
 
-    private RemotingCommand endTransactionRequest(int state, String brokerName, boolean fromTransactionCheck) {
+    private RemotingCommand endTransactionRequest(int state, String topic, String brokerName, boolean fromTransactionCheck) {
         EndTransactionRequestHeader header = new EndTransactionRequestHeader();
         header.setBrokerName(brokerName);
-        header.setTopic(TOPIC);
+        header.setTopic(topic);
         header.setProducerGroup("group");
         header.setMsgId("msgId");
         header.setTransactionId("txId");
