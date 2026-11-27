@@ -321,7 +321,7 @@ public class ProxyAdminGrpcService extends AdminGrpc.AdminImplBase implements St
         String what) {
         CompletableFuture<T> timeout = new CompletableFuture<>();
         ScheduledFuture<?> timer = this.adminTimeoutScheduler.schedule(
-            () -> timeout.completeExceptionally(new IllegalStateException(
+            () -> timeout.completeExceptionally(new GrpcProxyException(Code.PROXY_TIMEOUT,
                 what + " timed out after " + timeoutMillis + "ms")),
             timeoutMillis, TimeUnit.MILLISECONDS);
         // one admin RPC fans out to every broker, so the timer is cancelled as soon as the answer

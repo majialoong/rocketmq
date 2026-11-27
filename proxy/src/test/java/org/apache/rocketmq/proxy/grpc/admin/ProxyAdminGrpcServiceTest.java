@@ -781,7 +781,7 @@ public class ProxyAdminGrpcServiceTest extends InitConfigTest {
                 .setGroup(resource(GROUP)).build(), observer);
 
             assertTrue("no response although the cluster lookup is bounded", observer.done.await(5, TimeUnit.SECONDS));
-            assertNotEquals(Code.OK, observer.value.getStatus().getCode());
+            assertEquals(Code.PROXY_TIMEOUT, observer.value.getStatus().getCode());
         } finally {
             ConfigurationManager.getProxyConfig().setGrpcAdminServerRequestTimeoutMillis(savedTimeout);
         }
@@ -1389,7 +1389,7 @@ public class ProxyAdminGrpcServiceTest extends InitConfigTest {
             service.getTopicRoute(GetTopicRouteRequest.newBuilder().setTopic(resource(TOPIC)).build(), observer);
 
             assertTrue("no response although the route lookup is bounded", observer.done.await(5, TimeUnit.SECONDS));
-            assertNotEquals(Code.OK, observer.value.getStatus().getCode());
+            assertEquals(Code.PROXY_TIMEOUT, observer.value.getStatus().getCode());
         } finally {
             ConfigurationManager.getProxyConfig().setGrpcAdminServerRequestTimeoutMillis(savedTimeout);
         }
